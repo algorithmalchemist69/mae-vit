@@ -1,0 +1,45 @@
+# Fine-tuning Configuration
+experiment_name: mae_finetune
+
+data:
+  dataset: cifar100
+  image_size: 32
+  num_workers: 4
+
+model:
+  patch_size: 4
+  embed_dim: 384
+  encoder_depth: 6
+  encoder_heads: 6
+  num_classes: 100
+  drop_path_rate: 0.1
+  global_pool: true       # global average pooling instead of [CLS]
+
+training:
+  epochs: 100
+  batch_size: 128
+  base_lr: 0.0005
+  weight_decay: 0.05
+  warmup_epochs: 10
+  min_lr: 0.000001
+  layer_decay: 0.65       # layer-wise lr decay (closer to output = higher lr)
+  optimizer: adamw
+  clip_grad: 1.0
+  label_smoothing: 0.1
+  mixup_alpha: 0.8
+  cutmix_alpha: 1.0
+  mixup_prob: 0.5
+
+  # Augmentation (stronger for fine-tuning)
+  use_random_crop: true
+  use_horizontal_flip: true
+  use_auto_augment: true
+  use_random_erasing: true
+
+logging:
+  log_every: 50
+  save_every: 25
+  tensorboard: true
+
+# Path to MAE pre-trained checkpoint
+pretrained_checkpoint: experiments/mae_pretrain/checkpoints/best.pth

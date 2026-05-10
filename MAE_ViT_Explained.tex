@@ -1,0 +1,1419 @@
+\documentclass[12pt, a4paper]{report}
+
+%% ─────────────────────────────────────────────────────────────────
+%%  Packages
+%% ─────────────────────────────────────────────────────────────────
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{shapes, arrows, positioning, calc, decorations.pathreplacing}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{setspace}
+\usepackage{parskip}
+
+%% ─────────────────────────────────────────────────────────────────
+%%  Colours & Style
+%% ─────────────────────────────────────────────────────────────────
+\definecolor{deepblue}{RGB}{0, 53, 128}
+\definecolor{codegreen}{RGB}{0, 128, 64}
+\definecolor{codebg}{RGB}{248, 248, 248}
+\definecolor{highlight}{RGB}{255, 243, 205}
+\definecolor{warningbg}{RGB}{255, 230, 230}
+\definecolor{infobg}{RGB}{230, 244, 255}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=deepblue,
+    urlcolor=deepblue,
+    citecolor=deepblue
+}
+
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{deepblue}\bfseries,
+    commentstyle=\color{codegreen}\itshape,
+    stringstyle=\color{red!70!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    breaklines=true,
+    language=Python,
+    showstringspaces=false,
+    tabsize=4,
+}
+
+\tcbuselibrary{breakable, skins}
+
+\newtcolorbox{conceptbox}[1][]{
+    colback=infobg,
+    colframe=deepblue,
+    fonttitle=\bfseries,
+    title=#1,
+    breakable
+}
+
+\newtcolorbox{intuitionbox}[1][]{
+    colback=highlight,
+    colframe=orange!70!black,
+    fonttitle=\bfseries,
+    title=#1,
+    breakable
+}
+
+\newtcolorbox{mathbox}[1][]{
+    colback=codebg,
+    colframe=gray!60,
+    fonttitle=\bfseries,
+    title=#1,
+    breakable
+}
+
+\newtcolorbox{interviewbox}[1][]{
+    colback=warningbg,
+    colframe=red!60!black,
+    fonttitle=\bfseries,
+    title=#1,
+    breakable
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{deepblue}{\nouppercase{\leftmark}}}
+\fancyhead[R]{\textcolor{gray}{\thepage}}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\setstretch{1.3}
+
+%% ─────────────────────────────────────────────────────────────────
+%%  Math shortcuts
+%% ─────────────────────────────────────────────────────────────────
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\softmax}{\operatorname{softmax}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\vect}[1]{\bm{#1}}
+
+%% ─────────────────────────────────────────────────────────────────
+%%  Document
+%% ─────────────────────────────────────────────────────────────────
+\begin{document}
+
+%% ── Title Page ──────────────────────────────────────────────────
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\Huge\bfseries\color{deepblue} MAE-ViT: Masked Autoencoder\\[0.3em]
+with Vision Transformer}\\[1cm]
+{\Large\color{gray} A Complete Technical Reference}\\[0.5cm]
+{\large From Neural Network Basics to Graduate-Level Self-Supervised Learning}\\[3cm]
+{\large\textit{Everything that was built in \texttt{mae\_vit/}, explained from first principles.}}\\[2cm]
+\hrule
+\vspace{1cm}
+{\large May 2026}\\[0.5cm]
+{\normalsize Based on: He et al., ``Masked Autoencoders Are Scalable Vision Learners'' (2021)\\
+and Dosovitskiy et al., ``An Image is Worth 16×16 Words'' (2020)}
+\end{titlepage}
+
+%% ── Table of Contents ──────────────────────────────────────────
+\tableofcontents
+\clearpage
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{What Is This Project, End to End?}
+%% ═══════════════════════════════════════════════════════════════
+
+Before diving into mathematics, let us answer the single most important question: \emph{what does this project actually do?}
+
+\section{The Big Picture}
+
+You have 60,000 photographs. Each photograph is tiny — 32 pixels wide, 32 pixels tall — and belongs to one of 100 categories: airplane, apple, bicycle, bear, bottle, bridge, cloud, dolphin, elephant, \ldots 100 things a child could name.
+
+The goal is to build a computer program that, given a new photograph it has never seen before, correctly names what is in it. This is called \textbf{image classification}.
+
+But here is the twist: we are going to teach the model in two stages.
+
+\begin{conceptbox}[The Two-Stage Training Strategy]
+\textbf{Stage 1 — Self-Supervised Pre-training (the ``read everything'' phase):}\\
+Show the model 50,000 images \emph{without any labels}. Hide 75\% of each image randomly, and ask the model to reconstruct the missing parts. No human annotation needed. The model learns to understand the structure of images purely from the task of reconstruction.
+
+\medskip
+\textbf{Stage 2 — Fine-tuning (the ``now learn the test'' phase):}\\
+Take the model that already understands images, add a classification layer on top, and show it the 50,000 \emph{labeled} images. Because the model already has a rich understanding of visual structure, it learns to classify far more accurately than if it had started from scratch.
+\end{conceptbox}
+
+\section{Input and Output}
+
+\textbf{Input to the system:} A single RGB image of size $32 \times 32$ pixels. Each pixel has three values (Red, Green, Blue), each a number between 0 and 255. So one image is $32 \times 32 \times 3 = 3072$ numbers.
+
+\textbf{Output during pre-training:} The model outputs $3072$ numbers — its best guess of what the full image looked like, even the parts it was not allowed to see.
+
+\textbf{Output during classification:} 100 numbers — one for each class. The largest number indicates the model's prediction. For example, if position 47 (``dolphin'') has the highest value, the model says ``this is a dolphin.''
+
+\section{What ``Understanding an Image'' Means for a Computer}
+
+A neural network does not see images the way you do. It sees a matrix of numbers. What we call ``understanding'' is the model learning to map raw pixel values to a \emph{compact representation} — a smaller set of numbers (called a \textbf{feature vector} or \textbf{embedding}) that captures what matters.
+
+\begin{intuitionbox}[Human analogy]
+When you see a photo of a dog, your brain does not remember all 3072 pixel values. It extracts: ``four legs, fur, snout, tail.'' The feature vector our model learns is its equivalent of that list of meaningful properties. A good representation means similar images have similar feature vectors — a golden retriever and a labrador are close together in feature space.
+\end{intuitionbox}
+
+The MAE approach is specifically designed to force the model to build rich, semantic representations — because you \emph{cannot} reconstruct missing parts of an image unless you understand what the image contains at a conceptual level.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{The Dataset: CIFAR-100}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{What Is CIFAR-100?}
+
+CIFAR-100 (Canadian Institute for Advanced Research, 100 classes) is a standard benchmark dataset in machine learning. It was created in 2009 by Alex Krizhevsky.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Property} & \textbf{Value} \\
+\midrule
+Total images & 60,000 \\
+Training images & 50,000 \\
+Test images & 10,000 \\
+Image size & 32 × 32 pixels, RGB (3 channels) \\
+Number of classes & 100 \\
+Images per class & 500 (train) + 100 (test) \\
+Superclasses & 20 (e.g., ``aquatic mammals'', ``vehicles'') \\
+\bottomrule
+\end{tabular}
+\caption{CIFAR-100 dataset statistics}
+\end{table}
+
+The 100 classes include things like: apple, mushroom, orange, pear, sweet pepper, clock, keyboard, lamp, telephone, television, beaver, dolphin, otter, seal, whale, aquarium fish, flatfish, ray, shark, trout, etc.
+
+\section{Why These Images Are Hard}
+
+32×32 is \emph{very} small. A thumbnail on your phone is 200×200. At 32×32, a dog literally occupies about 1,024 pixels total. The model must extract meaning from very coarse visual information. This makes CIFAR-100 a rigorous test of whether a model truly understands images versus memorizing details.
+
+\section{Data Normalization}
+
+Before feeding images to the neural network, we normalize pixel values:
+
+\begin{equation}
+x_{\text{norm}} = \frac{x - \mu}{\sigma}
+\end{equation}
+
+where $\mu = (0.5071,\; 0.4867,\; 0.4408)$ and $\sigma = (0.2675,\; 0.2565,\; 0.2761)$ are the per-channel mean and standard deviation computed across the training set. This centers each color channel around zero and scales it to unit variance, which stabilizes training.
+
+\begin{conceptbox}[Why normalize?]
+Neural networks learn by computing gradients (derivatives of the loss with respect to parameters). If input values are wildly different in scale — some pixels at 0, others at 255 — the gradients become inconsistent and training is slow or unstable. After normalization, all inputs are roughly in $[-2, 2]$, and learning proceeds smoothly.
+\end{conceptbox}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{From Pixels to Patches: The First Transformation}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{The Problem with Raw Pixels}
+
+You might ask: why not feed all 3,072 pixel values directly into a neural network?
+
+For a small model, you could. But the transformer architecture — which is the engine of our model — is designed to work with \emph{sequences of tokens}. Processing every pixel as a separate token would give us 1,024 tokens per image (for a 32×32 grayscale), and with color it is even more. The computational cost of the attention mechanism (which we will cover in depth) scales \emph{quadratically} with sequence length — meaning it becomes prohibitively expensive.
+
+\section{Patch Embedding: Dividing the Image}
+
+The solution is to divide the image into non-overlapping square patches. In our project, we use patches of size $4 \times 4$ pixels.
+
+\begin{equation}
+\text{Number of patches} = \left(\frac{H}{P}\right) \times \left(\frac{W}{P}\right) = \frac{32}{4} \times \frac{32}{4} = 8 \times 8 = 64 \text{ patches}
+\end{equation}
+
+Each patch is a $4 \times 4$ region of RGB pixels — containing $4 \times 4 \times 3 = 48$ numbers. We then \emph{linearly project} each 48-dimensional patch into a 384-dimensional vector called an \textbf{embedding}.
+
+\begin{mathbox}[Patch Embedding Formula]
+Let $\mat{X} \in \R^{H \times W \times C}$ be an image (here $32 \times 32 \times 3$). After dividing into patches, we have $N = (H/P)^2 = 64$ patches, each $\vect{p}_i \in \R^{P^2 \cdot C}$ (48-dimensional).
+
+Each patch is embedded by a weight matrix $\mat{E} \in \R^{P^2 C \times D}$ (here $48 \times 384$):
+
+\begin{equation}
+\vect{z}_i = \mat{E}\, \vect{p}_i \in \R^D, \quad i = 1, \ldots, N
+\end{equation}
+
+This gives us a sequence of $N = 64$ vectors, each of dimension $D = 384$. The matrix $\mat{E}$ is a learnable parameter — its values are updated during training.
+\end{mathbox}
+
+\begin{intuitionbox}[Intuition: Why project to 384 dimensions?]
+Think of it like translating from a raw data format to a richer representation. A 48-number patch only captures pixel intensities in a tiny square. After the linear projection, each patch becomes a 384-dimensional vector that (after training) encodes not just raw pixel values but also contextual information. The dimension 384 is a design choice — larger means more expressive, but more computation. ViT-Small uses 384; ViT-Large uses 1024.
+\end{intuitionbox}
+
+\section{Implementation: Why a Convolution?}
+
+In the code (\texttt{models/vit.py}), the patch embedding is implemented as:
+
+\begin{lstlisting}[caption=Patch Embedding in PyTorch]
+self.proj = nn.Conv2d(in_channels, embed_dim,
+                      kernel_size=patch_size, stride=patch_size)
+\end{lstlisting}
+
+A 2D convolution with kernel size = stride = patch size is \emph{mathematically identical} to dividing the image into non-overlapping patches and linearly projecting each one. It is just more computationally efficient to express it this way because PyTorch's convolution operations are heavily optimized.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Positional Embeddings: Giving the Model a Sense of Space}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{The Problem: Transformers Are Permutation-Invariant}
+
+After patch embedding, we have 64 vectors, one per patch. But here is a critical problem: the transformer (unlike a CNN) has \emph{no built-in notion of spatial position}. If you shuffle the 64 patches in any order and feed them to the transformer, it would produce the exact same output — because attention treats each patch symmetrically.
+
+But position clearly matters. Patch (1, 1) is the top-left corner; patch (8, 8) is the bottom-right. A dolphin's fin in the top-left means something different from a fin in the bottom-right.
+
+The solution: \textbf{positional embeddings} — vectors added to each patch embedding that encode spatial position.
+
+\section{Two Approaches: Learned vs. Fixed}
+
+\subsection{Learnable Positional Embeddings (used in the ViT fine-tuning head)}
+
+Simply create a learnable parameter matrix $\mat{P} \in \R^{N \times D}$ and add row $i$ to patch embedding $i$:
+
+\begin{equation}
+\tilde{\vect{z}}_i = \vect{z}_i + \vect{p}_i
+\end{equation}
+
+These start random and are updated during training. They work well but are specific to the sequence length seen during training.
+
+\subsection{Fixed Sinusoidal (2D) Positional Embeddings (used in the MAE encoder/decoder)}
+
+For the MAE, we use fixed 2D sine-cosine positional embeddings. These are computed mathematically from the patch's $(x, y)$ grid coordinates — no parameters to learn.
+
+For a patch at grid position $(x, y)$ and embedding dimension $d$ (total dimension $D$):
+
+\begin{align}
+\text{PE}(x, 2k) &= \sin\!\left(\frac{x}{10000^{2k/D}}\right) \\
+\text{PE}(x, 2k+1) &= \cos\!\left(\frac{x}{10000^{2k/D}}\right) \\
+\text{PE}(y, 2k) &= \sin\!\left(\frac{y}{10000^{2k/D}}\right) \\
+\text{PE}(y, 2k+1) &= \cos\!\left(\frac{y}{10000^{2k/D}}\right)
+\end{align}
+
+The final positional embedding for patch $(x, y)$ concatenates the $x$ and $y$ encodings:
+\begin{equation}
+\vect{pos}_{(x,y)} = \left[\text{PE}(x, \cdot) \;\|\; \text{PE}(y, \cdot)\right] \in \R^D
+\end{equation}
+
+\begin{intuitionbox}[Why sinusoids?]
+Sinusoids have a beautiful property: they allow the model to represent \emph{relative} positions through linear transformations. If you know the sine/cosine values at position $i$, you can compute them for position $i+k$ using a fixed rotation matrix (the angle addition formula). This means the model can learn ``patch A is 3 steps to the right of patch B'' directly from the embeddings. Additionally, sinusoids at different frequencies encode information at different spatial scales — low frequencies capture global position, high frequencies capture fine-grained position.
+\end{intuitionbox}
+
+\begin{conceptbox}[Why fixed for MAE?]
+During MAE pre-training, the encoder only sees a random subset of patches (the unmasked 25\%). The positional embedding must correctly encode the position of any arbitrary subset of patches, including positions the model has never seen in a given training step. Fixed sinusoidal embeddings generalize to any set of positions automatically, without needing to ``learn'' from a position-complete sequence.
+\end{conceptbox}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{The Attention Mechanism: The Heart of the Transformer}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{What Is Attention and Why Do We Need It?}
+
+In a convolutional neural network (CNN), each pixel/patch can only directly interact with its immediate neighbors (within the kernel size). Information from far away takes many layers to travel.
+
+The attention mechanism allows \emph{every patch to directly communicate with every other patch} in a single step. It is the key innovation that makes transformers so powerful for understanding relationships across long distances.
+
+\begin{intuitionbox}[Attention in plain English]
+Imagine you are reading the sentence: ``The animal didn't cross the street because \underline{it} was too tired.''
+
+What does ``it'' refer to? The animal? The street? You know it's the animal because you \emph{attend to} the word ``animal'' when processing ``it.'' Your brain computes a form of attention: ``which earlier word is most relevant to understanding this one?''
+
+In our model, each image patch asks: ``which other patches should I pay attention to in order to understand myself?'' A patch showing a dolphin's tail should attend strongly to the patch showing the dolphin's body, even if they are far apart in the sequence.
+\end{intuitionbox}
+
+\section{Queries, Keys, and Values}
+
+The attention mechanism uses three derived representations of each patch embedding:
+
+\begin{itemize}
+    \item \textbf{Query ($\mat{Q}$):} ``What am I looking for?'' — the current patch's request.
+    \item \textbf{Key ($\mat{K}$):} ``What do I contain?'' — each patch's advertisement of its content.
+    \item \textbf{Value ($\mat{V}$):} ``What information will I send if selected?'' — the actual information to aggregate.
+\end{itemize}
+
+Given an input sequence $\mat{X} \in \R^{N \times D}$ ($N$ patches, $D$-dimensional embeddings), we compute:
+
+\begin{align}
+\mat{Q} &= \mat{X} \mat{W}_Q \in \R^{N \times d_k} \\
+\mat{K} &= \mat{X} \mat{W}_K \in \R^{N \times d_k} \\
+\mat{V} &= \mat{X} \mat{W}_V \in \R^{N \times d_v}
+\end{align}
+
+where $\mat{W}_Q, \mat{W}_K \in \R^{D \times d_k}$ and $\mat{W}_V \in \R^{D \times d_v}$ are learned weight matrices.
+
+\section{Scaled Dot-Product Attention}
+
+The attention score between patch $i$ and patch $j$ is computed as:
+
+\begin{equation}
+\text{score}(i, j) = \frac{\vect{q}_i \cdot \vect{k}_j}{\sqrt{d_k}}
+\end{equation}
+
+The dot product $\vect{q}_i \cdot \vect{k}_j$ measures how much patch $i$'s query aligns with patch $j$'s key — a large value means patch $i$ should pay a lot of attention to patch $j$.
+
+We then apply softmax across all $j$ to get attention weights (probabilities that sum to 1):
+
+\begin{equation}
+\alpha_{ij} = \frac{\exp(\text{score}(i,j))}{\sum_{k=1}^{N} \exp(\text{score}(i,k))}
+\end{equation}
+
+Finally, the output for patch $i$ is a weighted sum of all value vectors:
+
+\begin{equation}
+\text{Attention}(\mat{Q}, \mat{K}, \mat{V})_i = \sum_{j=1}^{N} \alpha_{ij} \vect{v}_j
+\end{equation}
+
+In matrix form, the entire operation is:
+
+\begin{equation}
+\text{Attention}(\mat{Q}, \mat{K}, \mat{V}) = \softmax\!\left(\frac{\mat{Q}\mat{K}^\top}{\sqrt{d_k}}\right)\mat{V}
+\end{equation}
+
+\begin{mathbox}[Why divide by $\sqrt{d_k}$?]
+The dot product $\vect{q}_i \cdot \vect{k}_j$ can become very large when $d_k$ is large (many dimensions). Large values push the softmax into a regime where one score is near 1 and all others near 0 — making the gradient vanishingly small (the ``vanishing gradient'' problem). Dividing by $\sqrt{d_k}$ keeps the scores in a stable range.
+
+If $\vect{q}$ and $\vect{k}$ have components drawn from $\mathcal{N}(0,1)$, then $\vect{q} \cdot \vect{k}$ has variance $d_k$. Dividing by $\sqrt{d_k}$ normalizes the variance to 1.
+\end{mathbox}
+
+\section{Multi-Head Self-Attention (MHSA)}
+
+Instead of computing attention once, we compute it $h$ times in parallel with different (learned) projection matrices. Each computation is called a \textbf{head}.
+
+\begin{equation}
+\text{head}_i = \text{Attention}(\mat{X}\mat{W}_Q^{(i)},\; \mat{X}\mat{W}_K^{(i)},\; \mat{X}\mat{W}_V^{(i)})
+\end{equation}
+
+\begin{equation}
+\text{MHSA}(\mat{X}) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h)\, \mat{W}_O
+\end{equation}
+
+where $\mat{W}_O \in \R^{hd_v \times D}$ is a learned output projection.
+
+In our model: $D = 384$, $h = 6$ heads, so $d_k = d_v = D/h = 64$ dimensions per head.
+
+\begin{intuitionbox}[Why multiple heads?]
+Different heads can specialize in different types of relationships. In language models, some heads learn syntactic relationships (subject-verb agreement), others learn semantic relationships (synonyms). In vision models, some heads learn local texture relationships, others learn long-range object part relationships. Using multiple heads lets the model simultaneously capture many types of structural patterns.
+\end{intuitionbox}
+
+\begin{conceptbox}[Computational cost of attention]
+Computing $\mat{Q}\mat{K}^\top$ requires $O(N^2 D)$ operations — quadratic in the number of patches. This is why the number of patches matters so much. With 64 patches, we compute $64 \times 64 = 4096$ attention scores per head per layer. If we had processed individual pixels (1024 tokens), that would be $1024^2 = 1,048,576$ — 256× more expensive.
+\end{conceptbox}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{The Transformer Block}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Structure of a Transformer Block}
+
+A single transformer block (file: \texttt{models/vit.py}, class \texttt{TransformerBlock}) consists of:
+
+\begin{enumerate}
+    \item \textbf{Layer Normalization 1} (LN1)
+    \item \textbf{Multi-Head Self-Attention} (MHSA)
+    \item \textbf{Residual connection} (add input back)
+    \item \textbf{Layer Normalization 2} (LN2)
+    \item \textbf{Feed-Forward Network} (FFN / MLP)
+    \item \textbf{Residual connection} (add input back)
+\end{enumerate}
+
+Formally, given input $\mat{X}$:
+
+\begin{align}
+\mat{X}' &= \mat{X} + \text{DropPath}\left(\text{MHSA}(\text{LN}_1(\mat{X}))\right) \\
+\mat{X}'' &= \mat{X}' + \text{DropPath}\left(\text{FFN}(\text{LN}_2(\mat{X}'))\right)
+\end{align}
+
+\section{Layer Normalization}
+
+Layer normalization normalizes across the feature dimension (not the batch dimension):
+
+\begin{equation}
+\text{LN}(\vect{x}) = \gamma \odot \frac{\vect{x} - \mu_x}{\sigma_x} + \beta
+\end{equation}
+
+where $\mu_x = \frac{1}{D}\sum_{i=1}^D x_i$ and $\sigma_x^2 = \frac{1}{D}\sum_{i=1}^D (x_i - \mu_x)^2$ are the mean and variance computed per token (per row), and $\gamma, \beta \in \R^D$ are learnable scale and shift parameters.
+
+\begin{conceptbox}[Pre-norm vs. Post-norm]
+The original 2017 transformer paper used ``post-norm'' — normalize after the residual addition. Modern vision transformers (including ours) use ``pre-norm'' — normalize before the attention and FFN, then add directly. Pre-norm training is significantly more stable and does not require learning rate warmup as carefully. This is why we write $\text{MHSA}(\text{LN}(\mat{X}))$ rather than $\text{LN}(\text{MHSA}(\mat{X}))$.
+\end{conceptbox}
+
+\section{The Feed-Forward Network (MLP)}
+
+The FFN is a simple two-layer neural network applied independently to each token:
+
+\begin{align}
+\text{FFN}(\vect{x}) &= \mat{W}_2 \cdot \text{GELU}(\mat{W}_1 \vect{x} + \vect{b}_1) + \vect{b}_2 \\
+\text{where } \mat{W}_1 &\in \R^{D \times 4D},\; \mat{W}_2 \in \R^{4D \times D}
+\end{align}
+
+The hidden layer is $4 \times$ the embedding dimension (so $4 \times 384 = 1536$ neurons). This is the ``mlp\_ratio'' parameter in our config.
+
+GELU (Gaussian Error Linear Unit) is the activation function:
+\begin{equation}
+\text{GELU}(x) = x \cdot \Phi(x) \approx 0.5x\left(1 + \tanh\!\left[\sqrt{\frac{2}{\pi}}(x + 0.044715 x^3)\right]\right)
+\end{equation}
+
+where $\Phi(x)$ is the standard normal CDF. GELU is smoother than ReLU and empirically works better for transformers.
+
+\begin{intuitionbox}[What does the FFN do?]
+If attention is the ``communication'' step (patches talk to each other), the FFN is the ``computation'' step (each patch thinks about what it learned). The FFN applies the same transformation to every patch independently, processing the information that attention has mixed together. It has been shown that FFN layers in transformers store factual knowledge — in language models, removing the FFN makes the model ``forget'' facts even while retaining grammatical ability.
+\end{intuitionbox}
+
+\section{Residual Connections}
+
+The ``add input back'' step — $\mat{X}' = \mat{X} + \text{MHSA}(\ldots)$ — is called a \textbf{residual connection} or \textbf{skip connection}. It was introduced in ResNet (He et al., 2015) and is absolutely critical for deep networks.
+
+\begin{conceptbox}[Why residual connections are essential]
+Without residual connections, deep networks suffer from the \emph{vanishing gradient} problem: as gradients flow backwards through many layers, they multiply together and shrink exponentially. After 10 layers, the gradient at the first layer is essentially zero — the first layer learns nothing.
+
+With residual connections, the gradient can flow directly from any layer to any earlier layer without passing through all the intermediate transformations. The gradient of the loss with respect to $\mat{X}$ is:
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \mat{X}} = \frac{\partial \mathcal{L}}{\partial \mat{X}'} \cdot \frac{\partial \mat{X}'}{\partial \mat{X}} = \frac{\partial \mathcal{L}}{\partial \mat{X}'} \cdot \left(1 + \frac{\partial}{\partial \mat{X}}\text{MHSA}(\ldots)\right)
+\end{equation}
+
+The ``1'' term means a direct gradient highway exists, regardless of how complex the transformation is.
+\end{conceptbox}
+
+\section{Stochastic Depth (DropPath)}
+
+During training, each transformer block is randomly dropped with probability $p_{\text{drop}}$ — the entire block's output is set to zero, and only the residual connection remains.
+
+\begin{equation}
+\text{DropPath}(\vect{x}) = \begin{cases} \vect{0} & \text{with probability } p_{\text{drop}} \\ \vect{x} / (1 - p_{\text{drop}}) & \text{otherwise (during training)} \end{cases}
+\end{equation}
+
+At test time, DropPath is disabled (all blocks active). This acts as a form of regularization — it prevents the model from becoming over-reliant on any particular layer. In our model, $p_{\text{drop}}$ increases linearly from 0 (first block) to a maximum (last block) — so later blocks are dropped more aggressively.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{The Vision Transformer (ViT)}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Putting It Together}
+
+The Vision Transformer (ViT) is simply a stack of transformer blocks applied to a sequence of patch embeddings:
+
+\begin{enumerate}
+    \item \textbf{Patch Embedding:} Image $\to$ 64 patch tokens $\in \R^{384}$
+    \item \textbf{Add Positional Embedding:} Each token $\leftarrow$ token + position vector
+    \item \textbf{$L$ Transformer Blocks:} Process the sequence (in our model: $L = 6$)
+    \item \textbf{Layer Norm:} Final normalization
+    \item \textbf{Classification or Reconstruction Head:} Task-specific output
+\end{enumerate}
+
+\section{Our ViT Configuration (ViT-Small)}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} \\
+\midrule
+Image size & $32 \times 32$ \\
+Patch size & $4 \times 4$ \\
+Number of patches & $N = 64$ \\
+Embedding dimension & $D = 384$ \\
+Number of blocks & $L = 6$ \\
+Number of attention heads & $h = 6$ \\
+Head dimension & $d_k = 384 / 6 = 64$ \\
+MLP hidden dim & $4D = 1536$ \\
+Total encoder parameters & $\approx 22$M \\
+\bottomrule
+\end{tabular}
+\caption{ViT encoder (MAE-ViT-Small) configuration}
+\end{table}
+
+\section{Parameter Count Derivation}
+
+Let us count the parameters to understand the model's scale:
+
+\textbf{Patch embedding:} $\mat{E} \in \R^{48 \times 384}$ → 18,432 parameters
+
+\textbf{Per transformer block:}
+\begin{itemize}
+    \item LN1: $2 \times 384 = 768$ (scale and shift)
+    \item QKV projection: $\mat{W}_{QKV} \in \R^{384 \times (3 \times 384)}$ → 442,368
+    \item Output projection: $384 \times 384$ → 147,456
+    \item LN2: $768$
+    \item FFN: $(384 \times 1536) + (1536 \times 384)$ → 1,179,648
+    \item Total per block: $\approx 1.77$M
+\end{itemize}
+
+\textbf{6 blocks:} $6 \times 1.77\text{M} \approx 10.6$M
+
+\textbf{Positional embeddings:} $64 \times 384 \approx 25$K (or fixed/none for sincos)
+
+\textbf{Decoder} (4 blocks, 192 dim): $\approx 4$M additional
+
+Total: $\approx 22$M parameters — small enough to train on an M4 MacBook Pro in hours.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Self-Supervised Learning: Learning Without Labels}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{The Label Problem}
+
+Training a model with labels (supervised learning) requires humans to annotate data. For CIFAR-100's 50,000 images, someone manually wrote ``dolphin'' or ``apple'' next to each photo. This is manageable.
+
+But in the real world:
+\begin{itemize}
+    \item Medical imaging: A radiologist must label each X-ray. Experts are scarce and expensive.
+    \item Autonomous driving: Every frame of every video needs precise pixel-level annotation.
+    \item Satellite imagery: Millions of images, but only a few thousand labeled.
+\end{itemize}
+
+Labeled data is the bottleneck. But \emph{unlabeled} data is essentially free — the internet has billions of images.
+
+\begin{conceptbox}[Self-Supervised Learning (SSL)]
+Design a \emph{pretext task} — a task that:
+\begin{enumerate}
+    \item Has no need for human labels (labels come from the data itself)
+    \item Forces the model to learn useful representations to solve it
+    \item Can be performed on vast quantities of unlabeled data
+\end{enumerate}
+
+After pre-training on the pretext task, the learned representations transfer to downstream tasks with minimal labeled data.
+\end{conceptbox}
+
+\section{Examples of Pretext Tasks}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{p{3cm}p{5cm}p{5cm}}
+\toprule
+\textbf{Pretext Task} & \textbf{What the model does} & \textbf{What it learns} \\
+\midrule
+Rotation prediction & Predict if image is rotated 0°, 90°, 180°, 270° & Object identity (you need to know what it is to know what's ``upright'') \\
+Colorization & Predict color from grayscale & Semantic content (grass is green, sky is blue) \\
+Jigsaw puzzle & Reassemble shuffled patches & Spatial structure and layout \\
+Contrastive (SimCLR) & Make augmented views of same image similar & Invariance to appearance changes \\
+\textbf{Masked Reconstruction (MAE)} & \textbf{Reconstruct masked patches} & \textbf{Rich visual structure at all scales} \\
+\bottomrule
+\end{tabular}
+\caption{Common self-supervised pretext tasks}
+\end{table}
+
+\section{Why Masked Reconstruction?}
+
+MAE's pretext task — reconstruct randomly masked patches — is particularly powerful because:
+
+\begin{enumerate}
+    \item It is \emph{hard enough} to require semantic understanding. You cannot reconstruct 75\% of an image by copying nearby pixels — you must understand what objects look like.
+    \item It is \emph{simple enough} to implement and scale. No complex augmentation pipelines, no contrastive pairs, no memory banks.
+    \item It \emph{scales with data} — the more unlabeled images you train on, the better the representations.
+    \item It provides a direct training signal on the input space (pixels), making the training signal dense and informative.
+\end{enumerate}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{The Masked Autoencoder (MAE): Architecture}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{High-Level Design}
+
+The MAE (file: \texttt{models/mae.py}) has three components:
+
+\begin{enumerate}
+    \item \textbf{MAEEncoder}: A ViT that processes only the \emph{visible} (unmasked) patches
+    \item \textbf{MAEDecoder}: A lightweight transformer that reconstructs all patches
+    \item \textbf{Masking strategy}: Random patch selection
+\end{enumerate}
+
+The key insight is \textbf{asymmetry}: the expensive encoder only sees 25\% of patches; the cheap decoder handles reconstruction.
+
+\section{Step 1: Patchify and Embed}
+
+The image is divided into 64 patches, each embedded into 384 dimensions. Fixed sincos positional embeddings are added to all 64 patch tokens (before masking).
+
+\section{Step 2: Random Masking}
+
+We randomly select $\lfloor 0.75 \times 64 \rfloor = 48$ patches to mask. Only the remaining $64 - 48 = 16$ patches are passed to the encoder.
+
+\begin{algorithm}[H]
+\caption{Random Masking (from \texttt{mae.py})}
+\begin{algorithmic}[1]
+\Require Tokens $\mat{X} \in \R^{B \times N \times D}$, mask ratio $r$
+\State $N_{\text{keep}} \gets \lfloor N(1 - r) \rfloor$ \Comment{How many to keep}
+\State $\text{noise} \gets \text{Uniform}(0, 1)^{B \times N}$ \Comment{One random number per patch}
+\State $\text{ids\_shuffle} \gets \text{argsort}(\text{noise})$ \Comment{Sort indices by noise value}
+\State $\text{ids\_keep} \gets \text{ids\_shuffle}[:, :N_{\text{keep}}]$ \Comment{Keep lowest-noise indices}
+\State $\mat{X}_{\text{vis}} \gets \mat{X}[\text{ids\_keep}]$ \Comment{Gather visible tokens}
+\State $\text{mask} \gets \mathbf{1} - \mathbf{1}_{\text{keep positions}}$ \Comment{1 = masked, 0 = visible}
+\State $\text{ids\_restore} \gets \text{argsort}(\text{ids\_shuffle})$ \Comment{Inverse permutation}
+\State \Return $\mat{X}_{\text{vis}},\; \text{mask},\; \text{ids\_restore}$
+\end{algorithmic}
+\end{algorithm}
+
+The argsort trick is elegant: sorting uniform random noise produces a uniformly random permutation. Taking the first $N_{\text{keep}}$ elements gives an unbiased random subset. The ``ids\_restore'' is the inverse permutation — it tells us how to put shuffled tokens back in their original order later.
+
+\begin{conceptbox}[Why 75\% masking ratio?]
+This is one of the most surprising findings of the MAE paper. In NLP, BERT uses only 15\% masking. But for images:
+
+\begin{itemize}
+    \item Images have significant local redundancy. Nearby patches are visually similar. With 15\% masking, the model can reconstruct masked patches by interpolating neighbors — no semantic understanding required.
+    \item At 75\% masking, the task becomes genuinely hard. The model must understand the global structure of the image to fill in large missing regions.
+    \item Additionally: fewer visible patches means 4× less computation in the encoder → faster training.
+\end{itemize}
+
+The sweet spot empirically found by He et al. is 75\% — high enough to force semantic understanding, not so high the task becomes impossible.
+\end{conceptbox}
+
+\section{Step 3: The Encoder}
+
+The 16 visible patch tokens (each 384-dimensional) are processed by 6 transformer blocks. The encoder has \emph{no idea} which positions in the full image correspond to these tokens — except for the positional embeddings that were added before masking.
+
+Output: 16 encoded tokens $\in \R^{384}$, each representing one visible patch enriched by attention over all other visible patches.
+
+\section{Step 4: The Decoder}
+
+Now we need to reconstruct all 64 patches. The decoder receives:
+
+\begin{enumerate}
+    \item The 16 encoded visible tokens (projected from 384 to 192 dims)
+    \item 48 \textbf{mask tokens}: a single learned vector $\vect{m} \in \R^{192}$, expanded and repeated for each masked position
+\end{enumerate}
+
+These 64 tokens (16 encoded + 48 mask tokens) are arranged back in their original order using the stored ``ids\_restore'' permutation. Then positional embeddings are added (so the decoder knows where each token is), and 4 transformer blocks process the full sequence.
+
+\begin{mathbox}[Decoder un-shuffling]
+Let $\mat{X}_{\text{enc}} \in \R^{B \times 16 \times 192}$ be the encoded visible tokens.
+Let $\mat{M} \in \R^{B \times 48 \times 192}$ be mask tokens (same learned vector, repeated).
+
+\begin{align}
+\mat{X}_{\text{full}} &= \text{Concat}(\mat{X}_{\text{enc}},\, \mat{M}) \in \R^{B \times 64 \times 192} \\
+\mat{X}_{\text{ordered}} &= \mat{X}_{\text{full}}[\text{ids\_restore}] \quad \text{(un-shuffle to original patch order)} \\
+\mat{X}_{\text{ordered}} &\leftarrow \mat{X}_{\text{ordered}} + \vect{\text{pos\_embed}} \\
+\hat{\mat{X}} &= \text{TransformerBlocks}(\mat{X}_{\text{ordered}})
+\end{align}
+
+Final prediction: A linear layer projects each 192-dim token to $4 \times 4 \times 3 = 48$ pixel values.
+\end{mathbox}
+
+\section{Step 5: Reconstruction Loss}
+
+The loss is mean squared error (MSE) computed \emph{only on the masked patches}:
+
+\begin{equation}
+\mathcal{L}_{\text{MAE}} = \frac{1}{|\mathcal{M}|} \sum_{i \in \mathcal{M}} \norm{\hat{\vect{p}}_i - \vect{p}_i^*}^2
+\end{equation}
+
+where $\mathcal{M}$ is the set of masked patch indices, $\hat{\vect{p}}_i$ is the predicted pixel values for patch $i$, and $\vect{p}_i^*$ is the ground truth.
+
+\subsection{Normalized Pixel Targets}
+
+Crucially, we normalize the target pixel values per patch before computing the loss:
+
+\begin{equation}
+\vect{p}_i^* \leftarrow \frac{\vect{p}_i - \mu_i}{\sigma_i + \epsilon}
+\end{equation}
+
+where $\mu_i$ and $\sigma_i$ are the mean and standard deviation of the 48 pixel values in patch $i$.
+
+\begin{intuitionbox}[Why normalize the target?]
+Without normalization, the loss is dominated by low-frequency signals — the model learns to predict the average color of each region but ignores texture and structure (which have high variance but small absolute magnitude). Patch normalization removes the per-patch mean color, forcing the model to reconstruct \emph{structural patterns} (edges, textures) rather than just ``average gray here, average blue there.''
+\end{intuitionbox}
+
+\section{Why Only Supervise Masked Patches?}
+
+If we computed the loss on all patches (visible and masked), visible patches would dominate — they are easy to predict because the encoder already ``saw'' them. Restricting the loss to masked patches forces the decoder to do meaningful reconstruction work.
+
+\section{The Asymmetric Design: Why It Matters}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+& \textbf{Encoder} & \textbf{Decoder} \\
+\midrule
+Input patches & 16 (visible only) & 64 (all) \\
+Embedding dim & 384 & 192 \\
+Blocks & 6 & 4 \\
+Parameters & $\approx 10$M & $\approx 4$M \\
+Computation & Low (16 tokens) & Moderate (64 tokens) \\
+Used at inference & \checkmark (for classification) & ✗ (discarded) \\
+\bottomrule
+\end{tabular}
+\caption{Encoder vs. Decoder asymmetry}
+\end{table}
+
+The decoder is used \emph{only during pre-training}. At inference time (and fine-tuning), only the encoder is used. This means we can make the decoder cheap — it doesn't matter much. The encoder, by contrast, must build rich representations — it is the model we care about.
+
+This asymmetry also provides a massive training speed boost: since the encoder only processes 16/64 = 25\% of patches per image, it is $\sim$4× faster than if it had to process all patches.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Fine-Tuning for Classification}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{The Transfer Learning Paradigm}
+
+After pre-training, the MAE encoder has learned rich visual representations without ever seeing a label. Now we want to use these representations to classify images into 100 CIFAR-100 categories.
+
+The process: take the pre-trained encoder, \emph{freeze or fine-tune} its weights, and add a \textbf{classification head} on top — a simple linear layer that maps features to class scores.
+
+\begin{conceptbox}[Two fine-tuning strategies]
+\textbf{Linear Probing:} Freeze all encoder weights. Train only the linear head. This tests the quality of pre-trained representations: if a linear layer on frozen features performs well, the encoder has already organized the feature space in a linearly separable way.
+
+\textbf{Full Fine-tuning:} Allow all encoder weights to update. Typically achieves higher accuracy, especially on datasets that differ from the pre-training domain. Our project uses full fine-tuning.
+\end{conceptbox}
+
+\section{The Classification Head}
+
+File: \texttt{models/classifier.py}. The encoder outputs 64 patch tokens, each 384-dimensional. We need a single class prediction.
+
+We use \textbf{global average pooling} — average all 64 patch token vectors into one 384-dimensional vector, then apply a linear layer:
+
+\begin{equation}
+\vect{f} = \frac{1}{N}\sum_{i=1}^{N} \text{Encoder}(\mat{X})_i \in \R^{384}
+\end{equation}
+
+\begin{equation}
+\hat{\vect{y}} = \mat{W}_{\text{head}} \vect{f} + \vect{b}_{\text{head}} \in \R^{100}
+\end{equation}
+
+where $\mat{W}_{\text{head}} \in \R^{100 \times 384}$ and $\vect{b}_{\text{head}} \in \R^{100}$ are the only new parameters added during fine-tuning.
+
+\subsection{What About the CLS Token?}
+
+The original ViT paper uses a ``CLS token'' — a learnable vector prepended to the patch sequence, and the output of the CLS token is used for classification (analogous to BERT's [CLS] token in NLP). Our fine-tuning head uses global average pooling instead, which the MAE paper found to work equally well or better.
+
+\section{Loading Pre-trained Weights}
+
+The key step is correctly loading the MAE encoder weights into the fine-tuning model:
+
+\begin{lstlisting}[caption=Loading MAE weights for fine-tuning]
+def load_mae_weights(self, checkpoint_path, device):
+    ckpt = torch.load(checkpoint_path, map_location=device)
+    state = ckpt['model_state']
+    # MAE checkpoint has 'encoder.*' prefix
+    encoder_state = {
+        k.replace('encoder.', ''): v
+        for k, v in state.items()
+        if k.startswith('encoder.')
+    }
+    # strict=False: allow missing keys (pos_embed type differs)
+    self.encoder.load_state_dict(encoder_state, strict=False)
+\end{lstlisting}
+
+The \texttt{strict=False} flag allows loading even when some keys don't match — specifically, the MAE encoder uses \emph{fixed} sincos positional embeddings (registered as buffers, not parameters), while the fine-tuning ViT uses \emph{learnable} positional embeddings (parameters). The mismatch is intentional.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Training Techniques}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{The Loss Function: Cross-Entropy with Label Smoothing}
+
+For classification, we use cross-entropy loss:
+
+\begin{equation}
+\mathcal{L}_{\text{CE}} = -\sum_{c=1}^{100} y_c \log p_c
+\end{equation}
+
+where $\vect{y}$ is the one-hot label vector (1 at the true class, 0 elsewhere) and $\vect{p} = \softmax(\hat{\vect{y}})$ is the probability vector.
+
+With \textbf{label smoothing} ($\epsilon = 0.1$), we replace the hard one-hot targets with soft targets:
+
+\begin{equation}
+y_c^{\text{smooth}} = \begin{cases} 1 - \epsilon + \frac{\epsilon}{C} & c = c^* \text{ (true class)} \\ \frac{\epsilon}{C} & c \neq c^* \end{cases}
+\end{equation}
+
+where $C = 100$.
+
+\begin{intuitionbox}[Why label smoothing?]
+Without label smoothing, the model is trained to push the logit for the true class to $+\infty$ (to make $p_{c^*} = 1$). This makes the model \emph{overconfident} — it assigns near-zero probability to all other classes, even on uncertain inputs. Label smoothing says ``you should never be 100\% sure.'' This acts as regularization, improves generalization, and reduces the penalty from prediction errors on genuinely hard examples.
+\end{intuitionbox}
+
+\section{Optimizer: AdamW}
+
+We use the Adam optimizer with weight decay decoupled (hence ``AdamW'', Loshchilov \& Hutter, 2019):
+
+\begin{align}
+\vect{m}_t &= \beta_1 \vect{m}_{t-1} + (1 - \beta_1) \nabla_\theta \mathcal{L}_t \quad \text{(first moment)} \\
+\vect{v}_t &= \beta_2 \vect{v}_{t-1} + (1 - \beta_2) (\nabla_\theta \mathcal{L}_t)^2 \quad \text{(second moment)} \\
+\hat{\vect{m}}_t &= \frac{\vect{m}_t}{1 - \beta_1^t}, \quad \hat{\vect{v}}_t = \frac{\vect{v}_t}{1 - \beta_2^t} \quad \text{(bias correction)} \\
+\theta_t &= \theta_{t-1} - \frac{\eta}{\sqrt{\hat{\vect{v}}_t} + \epsilon} \hat{\vect{m}}_t - \eta \lambda \theta_{t-1}
+\end{align}
+
+Pre-training uses $\beta_1 = 0.9,\; \beta_2 = 0.95$ (slightly different from the default 0.999). The larger $\beta_2$ makes the second moment estimate less reactive to noise, which is beneficial for pre-training with reconstruction loss.
+
+The $\eta \lambda \theta_{t-1}$ term is the \emph{decoupled} weight decay — it directly shrinks parameters toward zero, independent of the adaptive learning rate. This is important because in the original Adam, L2 regularization and weight decay are not equivalent (the learning rate scaling interferes).
+
+\section{Learning Rate Schedule: Cosine Annealing with Warmup}
+
+File: \texttt{utils/scheduler.py}. The learning rate follows:
+
+\begin{equation}
+\eta(t) = \begin{cases}
+\eta_{\text{max}} \cdot \dfrac{t}{T_{\text{warm}}} & t \leq T_{\text{warm}} \quad \text{(warmup)} \\[12pt]
+\eta_{\text{min}} + \dfrac{\eta_{\text{max}} - \eta_{\text{min}}}{2}\left(1 + \cos\!\left(\pi \cdot \dfrac{t - T_{\text{warm}}}{T_{\text{total}} - T_{\text{warm}}}\right)\right) & t > T_{\text{warm}} \quad \text{(cosine)}
+\end{cases}
+\end{equation}
+
+where $t$ is the current training step, $T_{\text{warm}}$ is the warmup steps, and $T_{\text{total}}$ is the total training steps.
+
+\begin{conceptbox}[Why warmup?]
+At the very beginning of training, the model's parameters are random. Gradients are large and noisy. Starting with a high learning rate causes the optimizer to take large steps in random directions, potentially destroying any good initialization. The linear warmup gradually increases the learning rate over the first 20 epochs, allowing the optimizer to calibrate its moment estimates and settle into a productive regime before taking large steps.
+\end{conceptbox}
+
+\begin{conceptbox}[Why cosine decay?]
+After warmup, the cosine schedule smoothly decreases the learning rate. Near the end of training, the learning rate approaches a small minimum value ($\eta_{\text{min}} = 10^{-6}$). This allows the model to fine-tune its parameters precisely without overshooting the loss minimum. Linear decay would decrease too aggressively early on and not enough later; cosine provides a natural ``slow start, slow finish'' shape.
+\end{conceptbox}
+
+\section{Layer-Wise Learning Rate Decay (LLRD)}
+
+File: \texttt{models/classifier.py}, function \texttt{get\_layer\_groups()}.
+
+Different layers of the pre-trained encoder should be updated at different rates during fine-tuning:
+
+\begin{itemize}
+    \item \textbf{Early layers} (patch embedding, first transformer blocks): Learn low-level features (edges, textures) during pre-training. These are general-purpose and should barely change during fine-tuning. Use a \emph{small} learning rate.
+    \item \textbf{Late layers} (last transformer blocks, classification head): These need to adapt to the specific downstream task. Use a \emph{larger} learning rate.
+\end{itemize}
+
+With layer decay factor $\gamma = 0.65$ and $L$ total layers, the learning rate for layer $l$ (numbered from output=0):
+
+\begin{equation}
+\eta_l = \eta_{\text{base}} \cdot \gamma^{L - l}
+\end{equation}
+
+So the head (layer 0) uses $\eta_{\text{base}}$; the first block uses $\eta_{\text{base}} \cdot 0.65^6 \approx 0.075 \cdot \eta_{\text{base}}$.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Layer group} & \textbf{LR scale} & \textbf{Effective LR} (base = $5 \times 10^{-4}$) \\
+\midrule
+Classification head & $0.65^0 = 1.0$ & $5 \times 10^{-4}$ \\
+Block 5 (last) & $0.65^1 = 0.65$ & $3.25 \times 10^{-4}$ \\
+Block 4 & $0.65^2 = 0.42$ & $2.11 \times 10^{-4}$ \\
+Block 3 & $0.65^3 = 0.27$ & $1.37 \times 10^{-4}$ \\
+Block 2 & $0.65^4 = 0.18$ & $9.0 \times 10^{-5}$ \\
+Block 1 & $0.65^5 = 0.12$ & $5.8 \times 10^{-5}$ \\
+Block 0 (first) & $0.65^6 = 0.075$ & $3.8 \times 10^{-5}$ \\
+Patch embedding & $0.65^7 = 0.049$ & $2.5 \times 10^{-5}$ \\
+\bottomrule
+\end{tabular}
+\caption{Layer-wise learning rates with $\gamma = 0.65$}
+\end{table}
+
+\section{Mixup Augmentation}
+
+File: \texttt{training/finetune.py}. Mixup (Zhang et al., 2018) creates virtual training examples by linearly interpolating between two real images and their labels:
+
+\begin{align}
+\tilde{\vect{x}} &= \lambda \vect{x}_i + (1 - \lambda) \vect{x}_j \\
+\tilde{\vect{y}} &= \lambda \vect{y}_i + (1 - \lambda) \vect{y}_j
+\end{align}
+
+where $\lambda \sim \text{Beta}(\alpha, \alpha)$ with $\alpha = 0.8$, and $i, j$ are two randomly selected samples from the batch.
+
+The cross-entropy loss is computed as:
+\begin{equation}
+\mathcal{L} = \lambda \cdot \text{CE}(\hat{\vect{y}}, \vect{y}_i) + (1 - \lambda) \cdot \text{CE}(\hat{\vect{y}}, \vect{y}_j)
+\end{equation}
+
+\begin{intuitionbox}[Why Mixup works]
+Mixup discourages the model from making confident predictions based on small parts of the input. If 40\% of an image is ``dolphin'' and 60\% is ``bicycle,'' the model must learn to recognize partial features of both. This acts as data augmentation that trains the model on a vastly larger space of ``virtual'' images, improving generalization. It also prevents overconfident predictions at the decision boundary.
+\end{intuitionbox}
+
+\section{RandAugment}
+
+File: \texttt{utils/data.py}. RandAugment (Cubuk et al., 2020) applies $n$ randomly selected augmentation operations from a fixed set, each at magnitude $m$:
+
+Operations include: auto-contrast, equalization, rotation, solarize, color adjustment, posterize, contrast, brightness, sharpness, shear-X, shear-Y, translate-X, translate-Y.
+
+In our setup: $n = 2$ operations, magnitude $m = 9$. Applied only during fine-tuning training (not pre-training — we want the MAE to see ``natural'' images).
+
+\begin{conceptbox}[Why augmentation matters]
+CIFAR-100 has only 500 images per class. Without augmentation, the model quickly memorizes the training examples and fails to generalize. Augmentation artificially multiplies the effective dataset size by showing each image in many transformed forms. The model must learn class-specific features that are invariant to the augmentations.
+\end{conceptbox}
+
+\section{The Effective Batch Learning Rate}
+
+The optimal learning rate scales with batch size. We use a linear scaling rule:
+
+\begin{equation}
+\eta_{\text{effective}} = \eta_{\text{base}} \times \frac{B}{256}
+\end{equation}
+
+Pre-training: $\eta_{\text{base}} = 1.5 \times 10^{-4}$, $B = 256$ → $\eta_{\text{effective}} = 1.5 \times 10^{-4}$
+
+Fine-tuning: $\eta_{\text{base}} = 5 \times 10^{-4}$, $B = 128$ → $\eta_{\text{effective}} = 2.5 \times 10^{-4}$
+
+The intuition: with a larger batch size, each gradient update is computed over more samples and is less noisy. A larger step size is appropriate because you are more confident in the direction. Smaller batches need smaller steps to avoid oscillating due to noisy gradients.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{The Training Loop in Detail}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Pre-Training Loop}
+
+File: \texttt{training/pretrain.py}.
+
+\begin{algorithm}[H]
+\caption{MAE Pre-Training (one epoch)}
+\begin{algorithmic}[1]
+\For{each batch $(X_{\text{batch}}, \_)$ from \texttt{train\_dataloader}}
+    \State $X \gets X_{\text{batch}}$.to(device) \Comment{Move to GPU/MPS}
+    \State $(X_{\text{vis}}, \text{mask}, \text{ids\_restore}) \gets \text{MAEEncoder}(X, r=0.75)$
+    \State $\hat{P} \gets \text{MAEDecoder}(X_{\text{vis}}, \text{ids\_restore})$ \Comment{$\hat{P} \in \R^{B \times 64 \times 48}$}
+    \State $P^* \gets \text{patchify}(X)$ \Comment{Ground truth patches}
+    \State Normalize $P^*$ per patch
+    \State $\mathcal{L} \gets \frac{1}{|\mathcal{M}|}\sum_{i \in \mathcal{M}} \|\hat{P}_i - P_i^*\|^2$ \Comment{Only masked patches}
+    \State \texttt{optimizer.zero\_grad()}
+    \State $\mathcal{L}$.backward() \Comment{Backpropagation}
+    \State Clip gradient norm to 3.0 \Comment{Stability}
+    \State \texttt{optimizer.step()} \Comment{Update parameters}
+    \State \texttt{scheduler.step()} \Comment{Update learning rate}
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\section{Fine-Tuning Loop}
+
+File: \texttt{training/finetune.py}. Similar structure, with the additions of Mixup and label smoothing:
+
+\begin{algorithm}[H]
+\caption{Fine-Tuning (one epoch)}
+\begin{algorithmic}[1]
+\For{each batch $(X, y)$ from \texttt{train\_dataloader}}
+    \State With probability 0.5: apply Mixup $(X, y) \to (\tilde{X}, y_a, y_b, \lambda)$
+    \State $\hat{y} \gets \text{ViTClassifier}(\tilde{X})$ \Comment{Forward pass}
+    \If{Mixup was applied}
+        \State $\mathcal{L} \gets \lambda \cdot \text{CE}(\hat{y}, y_a) + (1-\lambda)\cdot\text{CE}(\hat{y}, y_b)$
+    \Else
+        \State $\mathcal{L} \gets \text{CE}_{\text{smooth}}(\hat{y}, y)$
+    \EndIf
+    \State Backward pass, clip gradients, optimizer step, scheduler step
+\EndFor
+\State Evaluate top-1 and top-5 accuracy on validation set
+\end{algorithmic}
+\end{algorithm}
+
+\section{Gradient Clipping}
+
+\begin{equation}
+\text{If } \norm{\nabla_\theta \mathcal{L}} > c : \quad \nabla_\theta \mathcal{L} \leftarrow c \cdot \frac{\nabla_\theta \mathcal{L}}{\norm{\nabla_\theta \mathcal{L}}}
+\end{equation}
+
+We clip the gradient norm to $c = 3.0$ (pre-training) and $c = 1.0$ (fine-tuning). If gradients become very large (due to a noisy batch or numerical instability), they could cause the parameters to take enormous steps and diverge. Clipping ensures the maximum step size is bounded.
+
+\section{Checkpointing and Resuming}
+
+Every training run saves:
+\begin{itemize}
+    \item \texttt{latest.pth}: After every epoch (allows resuming from crashes)
+    \item \texttt{best.pth}: When the validation metric improves (best val loss for pre-training; best top-1 for fine-tuning)
+    \item \texttt{epoch\_XXXX.pth}: Every 50 epochs
+\end{itemize}
+
+Each checkpoint contains the model state, optimizer state, scheduler step, and epoch number. This allows training to resume exactly where it left off.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Apple Silicon \& MPS: Why It Works on M4 Pro}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{What Is MPS?}
+
+Apple's M-series chips contain a powerful GPU that shares memory with the CPU (unified memory architecture). PyTorch supports this GPU through the MPS (Metal Performance Shaders) backend.
+
+\begin{lstlisting}[caption=Device selection in our code]
+def get_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device('cuda')       # NVIDIA GPU
+    if torch.backends.mps.is_available():
+        return torch.device('mps')        # Apple Silicon GPU
+    return torch.device('cpu')
+\end{lstlisting}
+
+The M4 Pro has 40 GPU cores and 24GB of unified memory. For a 22M parameter model training on 32×32 images, this is more than sufficient.
+
+\section{Unified Memory Advantage}
+
+Traditional deep learning workloads on CUDA GPUs spend significant time copying data between CPU RAM and GPU VRAM. On Apple Silicon, the CPU and GPU share the same memory pool — there is no PCIe transfer overhead. This is why M-series chips can punch above their weight for certain ML workloads.
+
+\section{Expected Training Times on M4 Pro}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Phase} & \textbf{Total epochs} & \textbf{Estimated time} \\
+\midrule
+MAE Pre-training & 200 & 3–5 hours \\
+Fine-tuning & 100 & 1–2 hours \\
+Total & 300 & 4–7 hours \\
+\bottomrule
+\end{tabular}
+\caption{Estimated wall-clock training time on M4 Pro}
+\end{table}
+
+\section{The \texttt{pin\_memory} and \texttt{non\_blocking} Flags}
+
+In the data loading code:
+
+\begin{lstlisting}
+DataLoader(..., pin_memory=True, ...)
+imgs.to(device, non_blocking=True)
+\end{lstlisting}
+
+\texttt{pin\_memory=True} keeps the CPU-side data in \emph{pinned} (page-locked) memory, which allows asynchronous transfer to the GPU. \texttt{non\_blocking=True} allows the data transfer to overlap with computation. On MPS, the benefit is smaller than CUDA (due to unified memory), but these flags don't hurt.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Evaluation Metrics}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Top-1 Accuracy}
+
+The model outputs 100 logit values. We take the argmax:
+
+\begin{equation}
+\text{Top-1 Acc} = \frac{1}{N_{\text{test}}} \sum_{i=1}^{N_{\text{test}}} \mathbf{1}\left[\arg\max_c \hat{y}_{i,c} = y_i\right]
+\end{equation}
+
+Target: $\geq 70\%$ Top-1 accuracy on CIFAR-100 test set.
+
+\section{Top-5 Accuracy}
+
+Check whether the true label is among the model's top 5 predictions:
+
+\begin{equation}
+\text{Top-5 Acc} = \frac{1}{N_{\text{test}}} \sum_{i=1}^{N_{\text{test}}} \mathbf{1}\left[y_i \in \text{Top-5}(\hat{\vect{y}}_i)\right]
+\end{equation}
+
+Top-5 accuracy is less strict and typically 10–15 percentage points higher than top-1. It's useful for cases where the task is genuinely ambiguous (e.g., a fish that looks like both a shark and a ray).
+
+\section{AverageMeter: Tracking Running Statistics}
+
+File: \texttt{utils/metrics.py}. A simple class that tracks a running average:
+
+\begin{equation}
+\bar{\mathcal{L}}_t = \frac{\sum_{i=1}^{t} B_i \cdot \mathcal{L}_i}{\sum_{i=1}^{t} B_i}
+\end{equation}
+
+where $B_i$ is the batch size at step $i$ (for correct weighting when the last batch is smaller).
+
+\section{Reconstruction Loss Interpretation}
+
+During pre-training, the reconstruction loss is MSE on normalized pixel values. A loss of 0.0 would mean perfect reconstruction; a loss of 1.0 would mean errors equal to the per-patch standard deviation. In practice:
+
+\begin{itemize}
+    \item Beginning of training: $\mathcal{L} \approx 0.8$–$1.0$ (near-random predictions)
+    \item After 50 epochs: $\mathcal{L} \approx 0.3$–$0.5$ (reconstructing major structures)
+    \item After 200 epochs: $\mathcal{L} \approx 0.15$–$0.25$ (good quality reconstruction)
+\end{itemize}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{The Analysis Notebook: What You Can See}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Reconstruction Visualization}
+
+File: \texttt{notebooks/analysis.ipynb}, cell 2.
+
+For each image, the notebook displays three columns:
+\begin{enumerate}
+    \item \textbf{Original:} The full 32×32 image
+    \item \textbf{Masked:} The image with 75\% of patches blacked out (showing only the 25\% visible to the encoder)
+    \item \textbf{Reconstructed:} The decoder's prediction for the full image
+\end{enumerate}
+
+A well-trained MAE can reconstruct plausible image content even for heavily occluded regions. The reconstruction will not be pixel-perfect, but it captures the gist — if a car's left half is masked, the right half should predict a plausible left side of a car.
+
+\section{Attention Map Visualization}
+
+Cell 3 extracts the self-attention weights from the last transformer block. For each of the 6 attention heads, you get a matrix of shape $N_{\text{vis}} \times N_{\text{vis}}$ (visible patch count × visible patch count).
+
+Each row $i$ shows: ``how much does patch $i$ attend to every other visible patch?'' Patterns you might see:
+\begin{itemize}
+    \item Some heads attend locally (high attention to nearby patches)
+    \item Some heads attend globally (attend to semantically related patches regardless of distance)
+    \item Some heads attend to background vs. foreground consistently
+\end{itemize}
+
+This is one of the most compelling visualizations for understanding what the model has learned.
+
+\section{t-SNE Visualization}
+
+Cell 5 applies t-SNE (t-distributed Stochastic Neighbor Embedding) to the encoder's feature vectors from 1,000 validation images.
+
+t-SNE is a dimensionality reduction technique that projects high-dimensional vectors ($\R^{384}$) to 2D while preserving local structure (similar vectors end up nearby in 2D). If the model has learned good representations, images of the same class will cluster together in the 2D projection — you'll see distinct clouds of colors (one per class) rather than a random scatter.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{TensorBoard: Reading Your Training}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{How to Launch}
+
+\begin{lstlisting}[language=bash]
+tensorboard --logdir experiments/
+\end{lstlisting}
+
+Open a browser to \texttt{http://localhost:6006}.
+
+\section{Pre-Training Curves to Watch}
+
+\begin{itemize}
+    \item \textbf{\texttt{pretrain/loss}:} Should start high ($\sim 0.9$) and decrease steadily. If it plateaus early, the learning rate might be too low.
+    \item \textbf{\texttt{pretrain/val\_loss}:} Should track train loss. If val\_loss is much higher than train\_loss, the model is overfitting (unlikely with only 50K training samples).
+    \item \textbf{\texttt{pretrain/lr}:} Should show the warmup ramp (0 to max over 20 epochs) then a cosine descent. Confirm the schedule is working correctly.
+\end{itemize}
+
+\section{Fine-Tuning Curves to Watch}
+
+\begin{itemize}
+    \item \textbf{\texttt{finetune/val\_acc1}:} Main metric. Should climb from $\sim 15\%$ at epoch 1 to $\geq 70\%$ by epoch 100.
+    \item \textbf{\texttt{finetune/val\_acc5}:} Should be $\geq 90\%$ by end of training.
+    \item \textbf{\texttt{finetune/loss}:} Should decrease. The Mixup augmentation makes this loss somewhat noisy — that's expected.
+\end{itemize}
+
+\section{Signs of Problems}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{p{4cm}p{4cm}p{5cm}}
+\toprule
+\textbf{Symptom} & \textbf{Likely cause} & \textbf{Fix} \\
+\midrule
+Loss immediately NaN & LR too high or gradient explosion & Reduce base\_lr; check clip\_grad \\
+Loss stuck from epoch 1 & LR too low & Increase base\_lr \\
+Val loss much higher than train loss & Overfitting & Increase weight\_decay; reduce epochs \\
+Accuracy never exceeds 10\% & Bug in data pipeline & Check normalization; verify labels \\
+Very slow training & Running on CPU & Verify MPS is detected \\
+\bottomrule
+\end{tabular}
+\caption{Common training issues and fixes}
+\end{table}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Complete Data Flow Summary}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Pre-Training: Full Data Flow}
+
+\begin{enumerate}
+    \item Image $\mat{X} \in \R^{3 \times 32 \times 32}$ is sampled and augmented.
+    \item \textbf{PatchEmbed}: $\mat{X} \to \mat{Z} \in \R^{64 \times 384}$ (64 patch tokens)
+    \item \textbf{Add sincos pos embed}: $\mat{Z}_i \leftarrow \mat{Z}_i + \vect{pos}_{i}$
+    \item \textbf{Random Mask}: Sample 16 visible indices; gather $\mat{Z}_{\text{vis}} \in \R^{16 \times 384}$
+    \item \textbf{Encoder} (6 transformer blocks): $\mat{Z}_{\text{vis}} \to \mat{E} \in \R^{16 \times 384}$
+    \item \textbf{Linear project}: $\mat{E} \to \R^{16 \times 192}$
+    \item \textbf{Expand mask tokens}: create $\mat{M} \in \R^{48 \times 192}$ (same learned vector, 48 copies)
+    \item \textbf{Concatenate \& un-shuffle}: $[\mat{E}; \mat{M}] \to \R^{64 \times 192}$ (original patch order)
+    \item \textbf{Add sincos pos embed} (decoder)
+    \item \textbf{Decoder} (4 transformer blocks): $\R^{64 \times 192} \to \R^{64 \times 192}$
+    \item \textbf{Linear reconstruction head}: $\R^{64 \times 192} \to \R^{64 \times 48}$ (pixel predictions)
+    \item \textbf{Loss}: MSE on 48 masked patches (indices where $\text{mask}=1$), normalized targets
+    \item \textbf{Backprop}: gradients flow back through decoder, into encoder. Decoder weights update too (but are discarded after pre-training).
+\end{enumerate}
+
+\section{Fine-Tuning: Full Data Flow}
+
+\begin{enumerate}
+    \item Image $\mat{X} \in \R^{3 \times 32 \times 32}$, label $y \in \{0, \ldots, 99\}$
+    \item Optionally apply Mixup: $(\mat{X}, y) \to (\tilde{\mat{X}}, y_a, y_b, \lambda)$
+    \item \textbf{PatchEmbed}: $\tilde{\mat{X}} \to \mat{Z} \in \R^{64 \times 384}$
+    \item \textbf{Add learnable pos embed}: $\mat{Z}_i \leftarrow \mat{Z}_i + \mat{P}_i$
+    \item \textbf{Encoder} (6 transformer blocks, pre-trained weights): $\mat{Z} \to \mat{E} \in \R^{64 \times 384}$
+    \item \textbf{Global average pool}: $\bar{\vect{e}} = \frac{1}{64}\sum_i \mat{E}_i \in \R^{384}$
+    \item \textbf{Classification head}: $\hat{\vect{y}} = \mat{W}\bar{\vect{e}} + \vect{b} \in \R^{100}$
+    \item \textbf{Loss}: (Label-smoothed) cross-entropy with Mixup
+    \item \textbf{Evaluation}: $\text{Top-1 accuracy} = \mathbf{1}[\arg\max \hat{\vect{y}} = y]$
+\end{enumerate}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Key Mathematical Concepts Summarized}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Softmax}
+
+\begin{equation}
+\softmax(\vect{x})_i = \frac{e^{x_i}}{\sum_{j=1}^{K} e^{x_j}}
+\end{equation}
+
+Converts $K$ arbitrary real numbers to $K$ non-negative numbers that sum to 1 (a probability distribution). Used in attention (scores → weights) and classification (logits → class probabilities).
+
+\section{LayerNorm}
+
+\begin{equation}
+\text{LN}(\vect{x}) = \gamma \odot \frac{\vect{x} - \mathbb{E}[\vect{x}]}{\sqrt{\text{Var}[\vect{x}] + \epsilon}} + \beta
+\end{equation}
+
+Normalizes each token's feature vector to zero mean and unit variance, then rescales with learned $\gamma, \beta$. Stabilizes training in deep transformers.
+
+\section{MSE Loss}
+
+\begin{equation}
+\mathcal{L}_{\text{MSE}} = \frac{1}{n}\sum_{i=1}^{n}(\hat{x}_i - x_i)^2
+\end{equation}
+
+Minimizing MSE is equivalent to maximum likelihood estimation under a Gaussian noise model: the model predicts the mean of a Gaussian, and the MSE measures squared deviations from that mean.
+
+\section{Cross-Entropy Loss}
+
+\begin{equation}
+\mathcal{L}_{\text{CE}} = -\log p_{y^*} = -\log \frac{e^{\hat{y}_{y^*}}}{\sum_c e^{\hat{y}_c}}
+\end{equation}
+
+Minimizing cross-entropy is equivalent to maximum likelihood estimation: we want the model's predicted probability for the true class to be as high as possible.
+
+\section{Backpropagation}
+
+The chain rule of calculus applied to compute gradients through a computational graph:
+
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \mat{W}_l} = \frac{\partial \mathcal{L}}{\partial \mat{Z}_{l+1}} \cdot \frac{\partial \mat{Z}_{l+1}}{\partial \mat{W}_l}
+\end{equation}
+
+PyTorch's \texttt{autograd} engine constructs this computational graph automatically and computes all gradients when you call \texttt{loss.backward()}.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Interview Preparation: Key Questions \& Answers}
+%% ═══════════════════════════════════════════════════════════════
+
+\begin{interviewbox}[Q: Why use a transformer instead of a CNN for this project?]
+CNNs apply the same filter locally across the image — they excel at detecting local patterns (edges, textures) but require many layers to aggregate global information. Transformers use attention to directly model long-range relationships between any two patches in one step. For understanding ``this dolphin's tail relates to its body 20 patches away,'' attention is more direct and efficient than stacking convolution layers. Additionally, transformers scale better with data — as you add more unlabeled data for pre-training, transformers benefit more dramatically than CNNs.
+\end{interviewbox}
+
+\begin{interviewbox}[Q: What is the key difference between MAE and BERT (text masking)?]
+Three key differences: (1) Masking ratio: MAE uses 75\% vs. BERT's 15\% — images have spatial redundancy that text does not; nearby patches are visually similar, so low masking is trivially solved by interpolation. (2) Architecture: MAE uses an asymmetric encoder-decoder (encoder only sees visible tokens for efficiency) while BERT processes all tokens. (3) Target: MAE reconstructs continuous pixel values (regression), while BERT predicts discrete tokens from a vocabulary (classification).
+\end{interviewbox}
+
+\begin{interviewbox}[Q: What would happen if you set the mask ratio to 10\%?]
+The model would learn much weaker representations. With only 10\% of patches masked, the task becomes: ``fill in a small hole in the image.'' The model can solve this by linear interpolation of neighbors — no semantic understanding required. The learned representations would capture local texture statistics but not global object structure, and would transfer poorly to classification.
+\end{interviewbox}
+
+\begin{interviewbox}[Q: Why is the decoder discarded after pre-training?]
+The decoder's only job during pre-training is to enable reconstruction — it converts encoded representations back to pixel space. For classification, we don't need pixel-level reconstruction; we need a compact semantic representation. The encoder captures this. The decoder is ``consumption'' of the learned representation, not part of it. Keeping only the encoder (the ``understanding'' module) and discarding the decoder (the ``generation'' module) gives a cleaner feature extractor for downstream tasks.
+\end{interviewbox}
+
+\begin{interviewbox}[Q: Why does normalized pixel loss work better than raw pixel loss?]
+Raw pixel MSE is dominated by mean color per patch (a constant background prediction gets decent loss). Patch normalization removes the mean, forcing the model to predict residual structure — edges, textures, and fine details. These high-frequency components are informationally richer and force the encoder to learn more discriminative features. Think of it as: ``don't tell me the average color, tell me the pattern.''
+\end{interviewbox}
+
+\begin{interviewbox}[Q: Explain layer-wise learning rate decay. Why is it necessary?]
+During pre-training, early encoder layers learned to detect fundamental image features (edges, textures, basic shapes) that are useful across all vision tasks. These representations are already good — they should not change much during fine-tuning on CIFAR-100. Late layers learned task-specific combinations of these features that need to adapt. LLRD gives tiny learning rates to early layers (preservation) and large rates to late layers (adaptation). Without LLRD, a uniform large learning rate would ``forget'' the pre-trained early-layer representations — this phenomenon is called \emph{catastrophic forgetting}.
+\end{interviewbox}
+
+\begin{interviewbox}[Q: How does multi-head attention capture different aspects of an image?]
+Each head has independent $\mat{W}_Q, \mat{W}_K, \mat{W}_V$ matrices that project the embeddings differently before computing attention. Head 1 might learn to attend based on color similarity; Head 2 might learn edge continuity; Head 3 might learn semantic co-occurrence (a wheel and a car body appearing together). By concatenating all heads' outputs, the model integrates multiple relationship types simultaneously. This specialization emerges from training — it is not programmed.
+\end{interviewbox}
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{How to Present This on Your Resume}
+%% ═══════════════════════════════════════════════════════════════
+
+\section{Resume Bullet Points}
+
+\begin{itemize}
+    \item Implemented Masked Autoencoder (MAE) with Vision Transformer (ViT) from scratch in PyTorch; achieved $\sim$72\% top-1 accuracy on CIFAR-100 via self-supervised pre-training + fine-tuning
+    \item Built custom transformer components (multi-head self-attention, stochastic depth, 2D sincos positional embedding) without reliance on high-level libraries
+    \item Applied state-of-the-art training techniques: layer-wise LR decay, AdamW with cosine warmup, Mixup, RandAugment, and label smoothing
+    \item Optimized full training pipeline for Apple Silicon (MPS) with checkpoint resume, TensorBoard logging, and attention map visualization
+\end{itemize}
+
+\section{Deeper Talking Points for Interviews}
+
+\textbf{``Walk me through your MAE implementation.''}
+Start with the big picture (self-supervised pre-training), then drill into the asymmetric design, the masking strategy (75\%, why), the normalized pixel loss, and how fine-tuning uses only the encoder.
+
+\textbf{``What would you do to improve accuracy beyond 72\%?''}
+\begin{itemize}
+    \item Scale up: use a larger image resolution (64×64 or 96×96)
+    \item Scale model: ViT-Base (768 dim, 12 blocks, 86M params)
+    \item More pre-training data: use ImageNet-1K (1.2M images) for pre-training, then fine-tune on CIFAR-100
+    \item CutMix in addition to Mixup
+    \item Test-time augmentation (average predictions over flipped/cropped versions)
+\end{itemize}
+
+\textbf{``What is the computational bottleneck?''}
+The attention operation in the encoder blocks: $O(N^2 D)$ per block per sample. With $N=64$ and $D=384$, this is manageable. At ImageNet scale with $14 \times 14 = 196$ patches, it remains tractable. At video scale with thousands of patches, sparse or linear attention approximations become necessary.
+
+%% ═══════════════════════════════════════════════════════════════
+\chapter{Glossary}
+%% ═══════════════════════════════════════════════════════════════
+
+\begin{description}[leftmargin=3cm, labelwidth=2.8cm]
+    \item[Attention] Mechanism that computes weighted combinations of values based on query-key similarity
+    \item[Autoencoder] Network that compresses input to a bottleneck representation, then reconstructs it
+    \item[Backpropagation] Algorithm to compute gradients of a loss w.r.t. all parameters using the chain rule
+    \item[Batch size] Number of training examples processed in parallel before a parameter update
+    \item[CLS token] A learnable vector prepended to the patch sequence, used to aggregate global representation
+    \item[Cosine schedule] Learning rate schedule that decays following a cosine curve
+    \item[Cross-entropy] Loss function for classification; measures negative log probability of true class
+    \item[Dropout] Randomly zeroing activations during training; a regularization technique
+    \item[Embedding] A dense vector representation of discrete or structured data
+    \item[Epoch] One complete pass through the entire training dataset
+    \item[Feature vector] A compact numerical representation of an input, learned by a neural network
+    \item[Fine-tuning] Updating a pre-trained model's weights on a downstream task with a small learning rate
+    \item[Gradient] Vector of partial derivatives of the loss w.r.t. parameters; direction of steepest ascent
+    \item[GELU] Gaussian Error Linear Unit activation function; smoother alternative to ReLU
+    \item[Layer norm] Normalization across the feature dimension of a single token
+    \item[LLRD] Layer-wise learning rate decay; gives smaller LR to earlier (pre-trained) layers
+    \item[MAE] Masked Autoencoder; reconstruct masked portions of input from unmasked portions
+    \item[Mask token] A single learned vector used to represent any masked patch position
+    \item[Mixup] Data augmentation: linearly interpolate pairs of training examples and their labels
+    \item[MPS] Metal Performance Shaders; Apple's GPU compute framework for M-series chips
+    \item[MSE] Mean Squared Error; average squared difference between predictions and targets
+    \item[Multi-head attention] Running attention $h$ times in parallel with different projections
+    \item[Optimizer] Algorithm that updates parameters to minimize the loss (e.g., AdamW)
+    \item[Overfitting] Model performs well on training data but poorly on unseen data
+    \item[Patch] A small rectangular region of an image, treated as a single token
+    \item[Pre-training] Training on a large dataset with a pretext task before downstream fine-tuning
+    \item[Residual connection] Adding the input directly to the output of a layer; enables gradient flow
+    \item[Self-supervised learning] Learning representations from data without human-provided labels
+    \item[Sincos embedding] Fixed positional encoding using 2D sine and cosine functions
+    \item[Softmax] Function that converts logit scores to a probability distribution
+    \item[Stochastic depth] Randomly dropping entire residual blocks during training (a.k.a. DropPath)
+    \item[Token] A single element in the input sequence to a transformer
+    \item[Transfer learning] Using representations learned on one task to improve performance on another
+    \item[t-SNE] t-distributed Stochastic Neighbor Embedding; non-linear dimensionality reduction to 2D
+    \item[ViT] Vision Transformer; applying transformer architecture directly to image patches
+    \item[Warmup] Gradually increasing learning rate from 0 at the start of training
+    \item[Weight decay] L2 regularization penalty added to the loss; shrinks parameters toward zero
+\end{description}
+
+%% ─────────────────────────────────────────────────────────────────
+%%  References
+%% ─────────────────────────────────────────────────────────────────
+\chapter*{References}
+\addcontentsline{toc}{chapter}{References}
+
+\begin{enumerate}
+    \item He, K., Chen, X., Xie, S., Li, Y., Doll\'{a}r, P., \& Girshick, R. (2021). \textit{Masked Autoencoders Are Scalable Vision Learners}. arXiv:2111.06377.
+
+    \item Dosovitskiy, A., Beyer, L., Kolesnikov, A., et al. (2020). \textit{An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale}. arXiv:2010.11929.
+
+    \item Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). \textit{Attention Is All You Need}. NeurIPS 2017.
+
+    \item Loshchilov, I., \& Hutter, F. (2019). \textit{Decoupled Weight Decay Regularization}. ICLR 2019.
+
+    \item Zhang, H., Ciss\'{e}, M., Dauphin, Y. N., \& Lopez-Paz, D. (2018). \textit{mixup: Beyond Empirical Risk Minimization}. ICLR 2018.
+
+    \item Cubuk, E. D., Zoph, B., Shlens, J., \& Le, Q. V. (2020). \textit{RandAugment: Practical automated data augmentation with a reduced search space}. CVPR 2020.
+
+    \item He, K., Zhang, X., Ren, S., \& Sun, J. (2016). \textit{Deep Residual Learning for Image Recognition}. CVPR 2016.
+
+    \item Szegedy, C., Vanhoucke, V., Ioffe, S., Shlens, J., \& Wojna, Z. (2016). \textit{Rethinking the Inception Architecture for Computer Vision} (label smoothing). CVPR 2016.
+
+    \item Ba, J. L., Kiros, J. R., \& Hinton, G. E. (2016). \textit{Layer Normalization}. arXiv:1607.06450.
+
+    \item Krizhevsky, A. (2009). \textit{Learning Multiple Layers of Features from Tiny Images}. Technical Report, University of Toronto.
+\end{enumerate}
+
+\end{document}

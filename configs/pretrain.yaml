@@ -1,0 +1,41 @@
+# MAE Pre-training Configuration
+experiment_name: mae_pretrain
+
+data:
+  dataset: cifar100
+  image_size: 32
+  num_workers: 4
+
+model:
+  # ViT encoder
+  patch_size: 4           # 32/4 = 8x8 = 64 patches
+  embed_dim: 384
+  encoder_depth: 6
+  encoder_heads: 6
+  # MAE decoder
+  decoder_embed_dim: 192
+  decoder_depth: 4
+  decoder_heads: 6
+  # Masking
+  mask_ratio: 0.75
+  norm_pix_loss: true     # normalize pixel targets per patch
+
+training:
+  epochs: 200
+  batch_size: 256
+  base_lr: 0.00015         # scales with batch: lr = base_lr * batch/256
+  weight_decay: 0.05
+  warmup_epochs: 20
+  min_lr: 0.000001
+  optimizer: adamw
+  clip_grad: 3.0
+
+  # Augmentation
+  use_random_crop: true
+  use_horizontal_flip: true
+  color_jitter: 0.4
+
+logging:
+  log_every: 50
+  save_every: 50
+  tensorboard: true

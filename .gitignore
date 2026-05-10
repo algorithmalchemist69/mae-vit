@@ -1,0 +1,9 @@
+data/
+experiments/
+__pycache__/
+*.pth
+*.pyc
+*.pyo
+.DS_Store
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
