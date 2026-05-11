@@ -97,7 +97,7 @@ mae_vit/
 | Fine-tune tricks | Layer-wise LR decay (decay=0.65), Mixup, RandAugment, Label smoothing |
 | MPS support | Full Apple Silicon GPU acceleration via `torch.backends.mps` |
 
-## Key Concepts (for interviews)
+## Key Concepts 
 
 **Why mask 75%?** High masking ratio forces the model to learn semantic understanding rather than memorizing local textures. Low-level interpolation is insufficient — the model must understand the global structure.
 
