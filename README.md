@@ -2,7 +2,16 @@
 
 Self-supervised visual representation learning using Masked Autoencoders (He et al., 2022) on CIFAR-100.
 
-**Key results target:** ~72% Top-1 accuracy on CIFAR-100 with MAE pre-training → fine-tuning pipeline.
+## Results
+
+| Metric | Value |
+|---|---|
+| **Top-1 Accuracy** (CIFAR-100 test) | **74.42%** |
+| **Top-5 Accuracy** (CIFAR-100 test) | **93.92%** |
+| Best pre-train val loss | 0.434 |
+| Pre-training epochs | 200 |
+| Fine-tuning epochs | 100 |
+| Training hardware | Apple M4 Pro (MPS) |
 
 ## Architecture
 
